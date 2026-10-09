@@ -1,0 +1,22 @@
+export const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+export function distance(p,a,b){const dx=b.x-a.x,dy=b.y-a.y,l=dx*dx+dy*dy,t=l?clamp(((p.x-a.x)*dx+(p.y-a.y)*dy)/l,0,1):0;return (p.x-a.x-dx*t)**2+(p.y-a.y-dy*t)**2;}
+export class Kitchen{
+ constructor(seed=1701){this.seed=seed;this.randomState=seed>>>0;this.time=0;this.score=0;this.served=0;this.chopped=0;this.broken=0;this.chaos=0;this.player={x:240,y:525};this.hat=Array.from({length:6},(_,i)=>({x:240,y:525-i*45,vx:0,vy:0}));this.items=[];this.effects=[];this.pots=[{x:75,y:260,load:[]},{x:405,y:260,load:[]}];this.spawnTimer=1;this.acc=0;this.cooldown=0;this.combo=0;this.lastServe=-10;this.message='初出勤、がんばります！';this.messageTime=2;for(let i=0;i<6;i++)this.spawn(125+i*46,340+(i%2)*75);}
+ random(){this.randomState=(Math.imul(this.randomState,1664525)+1013904223)>>>0;return this.randomState/4294967296;}
+ spawn(x=95+this.random()*290,y=335+this.random()*205){this.items.push({x,y,type:'raw',style:Math.floor(this.random()*3),vx:0,vy:0,timer:0,cool:0});}
+ say(s){this.message=s;this.messageTime=1.5;}
+ burst(x,y,s,color='#ae4235'){this.effects.push({x,y,s,color,life:1});if(this.effects.length>20)this.effects.shift();}
+ advance(delta,dx=0,dy=0){this.acc+=clamp(delta,0,.1);while(this.acc+1e-10>=1/120&&this.time<60){this.step(1/120,dx,dy);this.acc-=1/120;}}
+ step(dt,dx,dy){if(this.time>=60)return;this.time=Math.min(60,this.time+dt);if(60-this.time<1e-8)this.time=60;this.messageTime=Math.max(0,this.messageTime-dt);this.cooldown=Math.max(0,this.cooldown-dt);const norm=Math.max(1,Math.hypot(dx,dy));this.player.x=clamp(this.player.x+dx/norm*290*dt,45,435);this.player.y=clamp(this.player.y+dy/norm*290*dt,350,630);const old={...this.hat[5]};this.hat[0]={...this.player,vx:0,vy:0};const length=this.time>30?57:45;for(let i=1;i<6;i++){const p=this.hat[i],prev=this.hat[i-1];p.vx+=(60*(prev.x-p.x)-12*p.vx)*dt;p.vy+=(60*(prev.y-length-p.y)-12*p.vy)*dt;p.x+=p.vx*dt;p.y+=p.vy*dt;p.x=clamp(p.x,-30,510);p.y=clamp(p.y,70,680);}const tip=this.hat[5],speed=Math.hypot(tip.vx,tip.vy);this.spawnTimer-=dt;if(this.spawnTimer<=0&&this.time<54){this.spawn();this.spawnTimer=this.time>30?.7:1.15;}if(this.time>30&&this.time-dt<=30){this.say('店長「もっとやる気を出せ！」');this.burst(240,230,'帽子、さらに増量。');}
+ for(const p of this.pots){for(const load of p.load)load.timer-=dt;for(let i=p.load.length-1;i>=0;i--)if(p.load[i].timer<=0){this.items.push({x:p.x+(p.x<240?68:-68),y:p.y+80,type:'dish',style:p.load[i].style,vx:0,vy:0,timer:0,cool:.5});p.load.splice(i,1);this.burst(p.x,p.y,'できた！','#35765e');}}
+ for(let i=this.items.length-1;i>=0;i--){const item=this.items[i];item.cool=Math.max(0,item.cool-dt);item.timer+=dt;let remove=false;
+ if(item.type==='raw'&&!item.cool&&distance(item,old,tip)<34**2&&speed>60){item.type='chopped';item.cool=.5;item.timer=0;this.chopped++;this.say('帽子で刻めるとは聞いてません！');this.burst(item.x,item.y,'ザクッ！');}
+ if(item.type==='chopped'){const pot=this.pots[item.x<240?0:1];item.x+=(pot.x-item.x)*dt*2.8;item.y+=(pot.y-item.y)*dt*2.8;if(Math.hypot(item.x-pot.x,item.y-pot.y)<22){pot.load.push({style:item.style,timer:1.2});remove=true;}}
+ if(item.type==='dish'&&!item.cool&&distance(item,old,tip)<40**2&&speed>90){item.type='flying';item.timer=0;item.vx=clamp(tip.vx*.65,-260,260);item.vy=-430;this.say('お皿は飛行機ではありません！');this.burst(item.x,item.y,'配膳ッ！');}
+ if(item.type==='flying'){item.x+=item.vx*dt;item.y+=item.vy*dt;if(item.y<105){if(item.x>55&&item.x<425){this.combo=this.time-this.lastServe<2?Math.min(5,this.combo+1):1;this.lastServe=this.time;const value=300+100*this.combo;this.score+=value;this.served++;this.burst(clamp(item.x,90,390),110,`+${value}円`,'#35765e');this.say(this.combo>=3?'客「もはや曲芸だ！」':'客「帽子の味はしないね！」');}else{this.disaster(item.x,item.y,'客の頭に着陸！');}remove=true;}else if(item.x<18||item.x>462){this.disaster(clamp(item.x,30,450),item.y,'皿、場外！');remove=true;}}
+ if(item.type==='raw'&&item.timer>15){this.disaster(item.x,item.y,'野菜、退勤。');remove=true;}if(item.type==='dish'&&item.timer>12){this.disaster(item.x,item.y,'冷めました。');remove=true;}if(remove)this.items.splice(i,1);}
+ if(!this.cooldown&&speed>100&&(tip.x<33||tip.x>447||tip.y<145)){this.cooldown=1.3;this.chaos++;this.say(tip.y<145?'換気扇「帽子を吸うな！」':'棚「今日で退職します。」');this.burst(clamp(tip.x,55,425),clamp(tip.y,150,630),'ガシャーン！');}
+ for(const e of this.effects){e.life-=dt;e.y-=dt*24;}this.effects=this.effects.filter(e=>e.life>0);if(this.items.length>55)this.items.splice(0,this.items.length-55);
+ }
+ disaster(x,y,s){this.broken++;this.chaos++;this.burst(x,y,s);this.say('新人「まだ営業できます！」');}
+}
